@@ -1,0 +1,75 @@
+{
+  "name": "l402-express",
+  "version": "0.1.0",
+  "description": "Express middleware for L402 — drop one line into any Express API to charge per-request Lightning payments. Built on top of l402-server.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "l402",
+    "express",
+    "middleware",
+    "lightning",
+    "lightning-network",
+    "bitcoin",
+    "macaroon",
+    "payment",
+    "402",
+    "api",
+    "monetization",
+    "agent",
+    "ai"
+  ],
+  "author": "Refined Element, LLC",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/refined-element/le-server-l402-express-node.git"
+  },
+  "bugs": {
+    "url": "https://github.com/refined-element/le-server-l402-express-node/issues"
+  },
+  "homepage": "https://github.com/refined-element/le-server-l402-express-node#readme",
+  "dependencies": {
+    "l402-server": "^0.1.0"
+  },
+  "peerDependencies": {
+    "express": ">=4.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "@types/supertest": "^6.0.0",
+    "express": "^5.0.0",
+    "supertest": "^7.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
