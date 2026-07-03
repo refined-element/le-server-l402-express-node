@@ -209,7 +209,111 @@ describe("l402() middleware — valid credential", () => {
       merchantId: 42,
       amountSats: 100,
     });
-    expect(verifyToken).toHaveBeenCalledWith({ macaroon: "mac", preimage: "pre" });
+    expect(verifyToken).toHaveBeenCalledWith({
+      macaroon: "mac",
+      preimage: "pre",
+      resource: "/api/premium",
+    });
+  });
+});
+
+describe("l402() middleware — server-side path-caveat enforcement on verify", () => {
+  const validResult: VerificationResult = {
+    valid: true,
+    resource: "/api/premium",
+    merchantId: 42,
+    amountSats: 100,
+    paymentHash: "abc123",
+  };
+
+  it("passes req.path as resource on verify by default", async () => {
+    const verifyToken = vi.fn().mockResolvedValue(validResult);
+    const client = makeClient({ verifyToken });
+    const app = express();
+    app.use(l402({ client, priceSats: 100 }));
+    app.use((_req, res) => res.json({ ok: true }));
+
+    await request(app)
+      .get("/api/premium/weather")
+      .set("Authorization", "L402 mac:pre");
+
+    expect(verifyToken).toHaveBeenCalledWith(
+      expect.objectContaining({ resource: "/api/premium/weather" }),
+    );
+  });
+
+  it("uses the configured `resource` option for verify (same value as minting)", async () => {
+    const verifyToken = vi.fn().mockResolvedValue(validResult);
+    const client = makeClient({ verifyToken });
+    const app = express();
+    app.use(
+      l402({
+        client,
+        priceSats: 100,
+        resource: (req) => `/canonical${req.path}`,
+      }),
+    );
+    app.use((_req, res) => res.json({ ok: true }));
+
+    await request(app).get("/foo").set("Authorization", "L402 mac:pre");
+
+    expect(verifyToken).toHaveBeenCalledWith(
+      expect.objectContaining({ resource: "/canonical/foo" }),
+    );
+  });
+
+  it("verifyResource: false disables sending a resource on verify", async () => {
+    const verifyToken = vi.fn().mockResolvedValue(validResult);
+    const client = makeClient({ verifyToken });
+    const app = express();
+    app.use(l402({ client, priceSats: 100, verifyResource: false }));
+    app.use((_req, res) => res.json({ ok: true }));
+
+    await request(app).get("/x").set("Authorization", "L402 mac:pre");
+
+    const args = verifyToken.mock.calls[0][0] as { resource?: string };
+    expect(args.resource).toBeUndefined();
+  });
+
+  it("verifyResource function overrides the resource used for verify", async () => {
+    const verifyToken = vi.fn().mockResolvedValue(validResult);
+    const client = makeClient({ verifyToken });
+    const app = express();
+    app.use(
+      l402({
+        client,
+        priceSats: 100,
+        verifyResource: (req) => `/override${req.path}`,
+      }),
+    );
+    app.use((_req, res) => res.json({ ok: true }));
+
+    await request(app).get("/bar").set("Authorization", "L402 mac:pre");
+
+    expect(verifyToken).toHaveBeenCalledWith(
+      expect.objectContaining({ resource: "/override/bar" }),
+    );
+  });
+
+  it("returns 401 when the producer API rejects a token bound to a different path", async () => {
+    const verifyToken = vi.fn().mockResolvedValue({
+      valid: false,
+      error: "Token bound to a different resource",
+    } satisfies VerificationResult);
+    const client = makeClient({ verifyToken });
+    const app = express();
+    app.use(l402({ client, priceSats: 100 }));
+    app.use((_req, res) => res.json({ ok: true }));
+
+    const res = await request(app)
+      .get("/not-what-was-paid-for")
+      .set("Authorization", "L402 mac:pre");
+
+    expect(res.status).toBe(401);
+    expect(res.body).toMatchObject({
+      error: "Unauthorized",
+      message: "Token bound to a different resource",
+    });
   });
 });
 

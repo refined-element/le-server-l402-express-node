@@ -68,6 +68,21 @@ export interface L402MiddlewareOptions {
   idempotencyKey?: (req: Request) => string | undefined;
 
   /**
+   * Controls the `resource` sent with token **verification** so the
+   * Lightning Enable producer API enforces the macaroon's `path` caveat
+   * server-side (a token bound to a different resource verifies as
+   * invalid). Requires `l402-server` ≥ 0.2.0.
+   *
+   * - **Omitted (default):** the same resource used for challenge minting
+   *   is sent — {@link resource} when provided, otherwise `req.path`.
+   * - **`false`:** disable — no resource is sent and the path caveat is
+   *   NOT enforced during verification; any comparison is up to you.
+   * - **Value or function:** override the resource used for verification
+   *   independently of the one bound at minting.
+   */
+  verifyResource?: ValueOrFn<string> | false;
+
+  /**
    * Custom handler for cases where verification of a presented L402 token
    * fails. Default behavior: respond with 401 and a JSON body containing
    * the error message. Provide a function here to send a fresh 402

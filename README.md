@@ -65,8 +65,23 @@ Functions can return `number` or `Promise<number>`. Same applies to `resource` a
 | `resource` | `string \| (req) => string \| Promise<string>` | `req.path` | Bound as a macaroon caveat |
 | `description` | `string \| (req) => string \| undefined` | none | Shown to the payer in their wallet |
 | `idempotencyKey` | `(req) => string \| undefined` | client IP | Send `X-Idempotency-Key` to dedup challenges within the invoice expiry window |
+| `verifyResource` | `string \| (req) => string \| Promise<string> \| false` | same resource as minting (`resource` or `req.path`) | Resource sent with verification so the producer API enforces the macaroon's path caveat server-side. `false` disables enforcement; a value/function overrides it. Requires `l402-server` ≥ 0.2.0 |
 | `baseUrl` | `string` | `https://api.lightningenable.com` | Override producer API URL (testing) |
-| `onInvalidToken` | `(req, failure) => void \| Promise<void>` | sends `401` | Custom handler for verification failures — useful for sending a fresh 402 instead of 401 |
+| `onInvalidToken` | `(req, res, failure, next) => void \| Promise<void>` | sends `401` | Custom handler for verification failures — useful for sending a fresh 402 instead of 401. Your handler must send a response on `res` or call `next` itself |
+
+## Server-side path-caveat enforcement
+
+Each macaroon is bound to the resource it was minted for. By default the middleware sends the current request's resource (the same value used at minting: `resource` if you configured it, otherwise `req.path`) with every verification call, so Lightning Enable rejects a token that was paid for a *different* path — you get replay protection across endpoints without writing a comparison yourself.
+
+```ts
+// Default: enforced automatically. To opt out (and do your own comparison
+// against res.locals.l402.resource):
+app.use("/api/premium", l402({
+  apiKey: process.env.LIGHTNING_ENABLE_API_KEY!,
+  priceSats: 100,
+  verifyResource: false,
+}));
+```
 
 ## Verified credential on downstream handlers
 
