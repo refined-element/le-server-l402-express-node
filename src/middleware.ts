@@ -78,12 +78,15 @@ export function l402(options: L402MiddlewareOptions): RequestHandler {
       return;
     }
 
-    // Credential present — verify it.
+    // Credential present — verify it. Unless disabled, pass the resource so
+    // the producer API enforces the macaroon's path caveat server-side.
     let verification: VerificationResult;
     try {
+      const verifyResource = await resolveVerifyResource(options, req);
       verification = await client.verifyToken({
         macaroon: parsed.macaroon,
         preimage: parsed.preimage,
+        resource: verifyResource,
       });
     } catch (err) {
       sendUpstreamError(res, err);
@@ -114,9 +117,7 @@ async function mintChallenge(
   req: Request,
 ): Promise<Challenge> {
   const priceSats = await resolve(options.priceSats, req);
-  const resource = options.resource
-    ? await resolve(options.resource, req)
-    : req.path;
+  const resource = await resolveMintResource(options, req);
   const description = options.description
     ? await resolve(options.description, req)
     : undefined;
@@ -130,6 +131,36 @@ async function mintChallenge(
     description,
     idempotencyKey,
   });
+}
+
+/**
+ * The resource bound into the macaroon at challenge minting:
+ * `options.resource` when provided, otherwise the request path.
+ */
+async function resolveMintResource(
+  options: L402MiddlewareOptions,
+  req: Request,
+): Promise<string> {
+  return options.resource ? await resolve(options.resource, req) : req.path;
+}
+
+/**
+ * The resource sent with token verification for server-side path-caveat
+ * enforcement. Defaults to the same value used at minting so a token the
+ * middleware itself issued verifies cleanly; `verifyResource: false`
+ * disables enforcement; a value/function overrides it.
+ */
+async function resolveVerifyResource(
+  options: L402MiddlewareOptions,
+  req: Request,
+): Promise<string | undefined> {
+  if (options.verifyResource === false) {
+    return undefined;
+  }
+  if (options.verifyResource !== undefined) {
+    return await resolve(options.verifyResource, req);
+  }
+  return resolveMintResource(options, req);
 }
 
 async function resolve<T>(
