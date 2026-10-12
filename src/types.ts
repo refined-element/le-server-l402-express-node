@@ -61,9 +61,15 @@ export interface L402MiddlewareOptions {
 
   /**
    * Optional idempotency key derivation. If supplied, the value is sent as
-   * `X-Idempotency-Key` so retries within the invoice expiry window return
-   * the same challenge. If omitted, the producer API falls back to the
-   * client IP (which is usually fine for middleware use).
+   * `X-Idempotency-Key` so a repeated key returns the same challenge while
+   * its invoice is live.
+   *
+   * Set it so each buyer gets their own invoice. If omitted, the producer
+   * API deduplicates by the CALLER's IP address plus resource and price.
+   * Behind this middleware the caller is your server, not the buyer, so
+   * every buyer of the same resource at the same price receives the same
+   * invoice until it expires, and only one of them can pay it. Example:
+   * `idempotencyKey: () => randomUUID()` (one invoice per unpaid request).
    */
   idempotencyKey?: (req: Request) => string | undefined;
 
