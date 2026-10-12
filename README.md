@@ -8,6 +8,8 @@
 
 **Express middleware for L402.** Drop one line into any Express API to charge per-request Lightning payments. Built on [`l402-server`](https://www.npmjs.com/package/l402-server) — Lightning Enable handles invoices, macaroons, and payment verification; your API stays where it is.
 
+Requires a Lightning Enable account on a plan that includes L402 (the Free Producer Sandbox works within its caps); see https://www.lightningenable.com for plans. Lightning Enable does not hold funds; the payment provider facilitates custody and settlement.
+
 ## Install
 
 ```bash
@@ -64,10 +66,31 @@ Functions can return `number` or `Promise<number>`. Same applies to `resource` a
 | `priceSats` | `number \| (req) => number \| Promise<number>` | **required** | Price in satoshis, ≥ 1 |
 | `resource` | `string \| (req) => string \| Promise<string>` | `req.path` | Bound as a macaroon caveat |
 | `description` | `string \| (req) => string \| undefined` | none | Shown to the payer in their wallet |
-| `idempotencyKey` | `(req) => string \| undefined` | client IP | Send `X-Idempotency-Key` to dedup challenges within the invoice expiry window |
+| `idempotencyKey` | `(req) => string \| undefined` | none (buyers share one challenge per resource and price; see [below](#one-invoice-per-buyer-set-idempotencykey)) | Sends `X-Idempotency-Key` on challenge minting. Set it so each buyer gets their own invoice |
 | `verifyResource` | `string \| (req) => string \| Promise<string> \| false` | same resource as minting (`resource` or `req.path`) | Resource sent with verification so the producer API enforces the macaroon's path caveat server-side. `false` disables enforcement; a value/function overrides it. Requires `l402-server` ≥ 0.2.0 |
 | `baseUrl` | `string` | `https://api.lightningenable.com` | Override producer API URL (testing) |
 | `onInvalidToken` | `(req, res, failure, next) => void \| Promise<void>` | sends `401` | Custom handler for verification failures — useful for sending a fresh 402 instead of 401. Your handler must send a response on `res` or call `next` itself |
+
+## One invoice per buyer: set `idempotencyKey`
+
+When you omit `idempotencyKey`, the Lightning Enable API deduplicates challenges by the caller's IP address, the resource, and the price, and returns the same challenge until its invoice expires. Behind this middleware the caller is **your server**, not the buyer, so every buyer who requests the same resource at the same price in that window receives the **same invoice**. A Lightning invoice can be paid only once, so after one buyer pays it, the others can't complete payment until it expires.
+
+Set `idempotencyKey` so each buyer gets their own invoice:
+
+```ts
+import { randomUUID } from "node:crypto";
+
+app.use("/api/premium", l402({
+  apiKey: process.env.LIGHTNING_ENABLE_API_KEY!,
+  priceSats: 100,
+  idempotencyKey: () => randomUUID(), // one invoice per unpaid request
+}));
+```
+
+- A repeated key returns the challenge already minted under it while its invoice is live, so a retry of the same buyer request doesn't mint a second invoice.
+- If you derive the key from a stable buyer identifier (for example, an authenticated user ID), include the resource and price in it. The API rejects a key that's still bound to a live challenge for a different resource or price with `409 idempotency_key_reuse`, which the middleware returns to the buyer as a `502`.
+- Keys can be up to 200 characters. A longer key is rejected with `400`, also returned as a `502`.
+- Each new key mints a new invoice, and every minted challenge counts toward any monthly challenge limit on your plan.
 
 ## Server-side path-caveat enforcement
 
@@ -82,6 +105,8 @@ app.use("/api/premium", l402({
   verifyResource: false,
 }));
 ```
+
+This is the default from 0.2.0. In 0.1.x the middleware sent no resource with verification, so a token was accepted on its macaroon and preimage alone, whatever path it was minted for, unless you compared `res.locals.l402.resource` yourself.
 
 ## Verified credential on downstream handlers
 
